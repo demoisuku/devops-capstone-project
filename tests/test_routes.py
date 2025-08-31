@@ -50,6 +50,12 @@ class TestAccountService(TestCase):
         """Runs once after each test case"""
         db.session.remove()
 
+    def test_account_not_found(self):
+        """It should not Read an Account that is not found"""
+        resp = self.client.get(f"{BASE_URL}/0")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+
     ######################################################################
     #  H E L P E R   M E T H O D S
     ######################################################################
@@ -124,3 +130,102 @@ class TestAccountService(TestCase):
         self.assertEqual(response.status_code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
 
     # ADD YOUR TEST CASES HERE ...
+
+    def test_read_an_account(self):
+        """It should READ an Account by id (happy path)"""
+        acct = AccountFactory()
+        # create first
+        r = self.client.post(
+            BASE_URL, json=acct.serialize(), content_type="application/json"
+        )
+        self.assertEqual(r.status_code, status.HTTP_201_CREATED)
+        account_id = r.get_json()["id"]
+
+        # read it back
+        resp = self.client.get(f"{BASE_URL}/{account_id}")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        body = resp.get_json()
+        self.assertEqual(body["id"], account_id)
+        self.assertEqual(body["name"], acct.name)
+        self.assertEqual(body["email"], acct.email)
+        self.assertEqual(body["address"], acct.address)
+        self.assertEqual(body["phone_number"], acct.phone_number)
+        self.assertEqual(body["date_joined"], str(acct.date_joined))
+
+    def test_list_accounts(self):
+        """It should LIST all Accounts"""
+        a1 = AccountFactory()
+        a2 = AccountFactory()
+        self.client.post(BASE_URL, json=a1.serialize(), content_type="application/json")
+        self.client.post(BASE_URL, json=a2.serialize(), content_type="application/json")
+
+        resp = self.client.get(BASE_URL)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertGreaterEqual(len(data), 2)
+
+    def test_update_account(self):
+        """It should UPDATE an existing Account"""
+        acct = AccountFactory()
+        r = self.client.post(
+            BASE_URL, json=acct.serialize(), content_type="application/json"
+        )
+        account_id = r.get_json()["id"]
+
+        payload = acct.serialize()
+        payload["name"] = "Updated Name"
+
+        resp = self.client.put(
+            f"{BASE_URL}/{account_id}",
+            json=payload,
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.get_json()["name"], "Updated Name")
+
+    def test_update_account_not_found(self):
+        """It should return 404 when updating a missing Account"""
+        payload = AccountFactory().serialize()
+        resp = self.client.put(
+            f"{BASE_URL}/0", json=payload, content_type="application/json"
+        )
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_update_wrong_media_type(self):
+        """It should return 415 when media type is wrong"""
+        acct = AccountFactory()
+        r = self.client.post(
+            BASE_URL, json=acct.serialize(), content_type="application/json"
+        )
+        account_id = r.get_json()["id"]
+
+        # triggers check_content_type("application/json") -> 415
+        resp = self.client.put(
+            f"{BASE_URL}/{account_id}",
+            data="{}",
+            content_type="text/plain",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
+
+    def test_delete_account(self):
+        """It should DELETE an Account"""
+        acct = AccountFactory()
+        r = self.client.post(
+            BASE_URL, json=acct.serialize(), content_type="application/json"
+        )
+        account_id = r.get_json()["id"]
+
+        resp = self.client.delete(f"{BASE_URL}/{account_id}")
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+
+        # verify it's gone
+        self.assertEqual(
+            self.client.get(f"{BASE_URL}/{account_id}").status_code,
+            status.HTTP_404_NOT_FOUND,
+        )
+
+    def test_delete_account_not_found(self):
+        """It should return 404 when deleting a missing Account"""
+        resp = self.client.delete(f"{BASE_URL}/0")
+        self.assertEqual(resp.status_co_
+

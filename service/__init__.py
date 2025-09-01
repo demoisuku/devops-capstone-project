@@ -9,6 +9,7 @@ from flask import Flask
 from service import config
 from service.common import log_handlers
 from flask_talisman import Talisman
+from flask_cors import CORS
 
 # Create Flask application
 app = Flask(__name__)
@@ -30,6 +31,7 @@ app.logger.info(70 * "*")
 
 #Security Header
 talisman = Talisman(app)
+CORS(app)
 
 try:
     models.init_db(app)  # make our database tables

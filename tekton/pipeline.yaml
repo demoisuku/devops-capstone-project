@@ -1,81 +1,90 @@
-#
 # This pipeline needs the following tasks from Tekton Hub
 #   - git-clone
 #   - flake8
-#
+#   - buildah (ClusterTask)
 ---
 apiVersion: tekton.dev/v1beta1
 kind: Pipeline
-metadata:  
+metadata:
   name: cd-pipeline
 spec:
   workspaces:
     - name: pipeline-workspace
   params:
     - name: repo-url
+      description: Git repo URL
     - name: branch
-    - name: build-image
+      description: Git branch to build
       default: main
+    - name: build-image
+      description: Fully qualified image name to build/push (e.g. image-registry.../accounts:latest)
   tasks:
     - name: init
-      workspaces:
-        - name: source
-          workspace: pipeline-workspace          
       taskRef:
-        name: cleanup
-
-    - name: lint
+        name: cleanup        # <-- ensure this Task actually exists, or remove this whole task
       workspaces:
         - name: source
           workspace: pipeline-workspace
+
+    - name: clone
+      runAfter:
+        - init
+      taskRef:
+        name: git-clone
+      params:
+        - name: url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.branch)
+      workspaces:
+        - name: output
+          workspace: pipeline-workspace
+
+    - name: lint
+      runAfter:
+        - clone
       taskRef:
         name: flake8
       params:
-      - name: image
-        value: "python:3.9-slim"
-      - name: args
-        value: ["--count","--max-complexity=10","--max-line-length=127","--statistics"]
-      runAfter:
-        - clone
+        - name: image
+          value: python:3.9-slim
+        - name: args
+          value:
+            - --count
+            - --max-complexity=10
+            - --max-line-length=127
+            - --statistics
+      workspaces:
+        - name: source
+          workspace: pipeline-workspace
 
     - name: tests
-      workspaces:
-        - name: source
-          workspace: pipeline-workspace
-      taskRef:
-        name: nose
-      params:
-      - name: database_uri
-        value: "sqlite:///test.db"
-      - name: args
-        value: "-v --with-spec --spec-color"
       runAfter:
         - clone
-
-    - name: build
+      taskRef:
+        name: nose           # <-- ensure this Task exists, or remove this task
+      params:
+        - name: database_uri
+          value: sqlite:///test.db
+        - name: args
+          value: -v --with-spec --spec-color
       workspaces:
         - name: source
           workspace: pipeline-workspace
+
+    - name: build
+      runAfter:
+        - lint
+        - tests
       taskRef:
         name: buildah
         kind: ClusterTask
       params:
-      - name: IMAGE
-        value: "$(params.build-image)"
-      runAfter:
-        - tests
-        - lint
-
- #   - name: clone
- #     workspaces:
- #       - name: output
- #         workspace: pipeline-workspace          
- #     taskRef:
- #       name: git-clone
- #     params:
- #     - name: url
- #       value: $(params.repo-url)
- #     - name: revision
- #       value: $(params.branch)
- #     runAfter:
- #       - init
+        - name: IMAGE
+          value: $(params.build-image)
+        # Optional: set CONTEXT to the repo root
+        - name: CONTEXT
+          value: .
+      workspaces:
+        - name: source
+          workspace: pipeline-workspace
